@@ -1,31 +1,34 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { readFileSync } from 'fs'
 import { URL } from 'url'
-import { pass, } from './lib'
+import { pass, read, } from './lib'
 import { createClient, RedisClient } from 'redis'
 
 let config: Bind
 let cli: RedisClient
-function listener(req: IncomingMessage, res: ServerResponse) {
+
+async function listener(req: IncomingMessage, res: ServerResponse) {
     const { headers, url: oriUrl, method } = req
     const oriLoc = new URL(config.pass + oriUrl)
-    console.log(oriLoc.href)
-    console.log(headers)
     pass({
         hostname: oriLoc.hostname,
         port: oriLoc.port, method, headers,
         path: oriLoc.pathname + oriLoc.search
-    }, req.readableLength ? req : undefined).then(pxy => {
+    }, await read(req)).then(pxy => {
         res.writeHead(pxy.statusCode || 500, pxy.headers)
         const bf = pxy.read()
-        const ss = bf.toString()
-        console.log(ss)
         if (oriLoc.pathname.endsWith('/_update')) {
+            const ss = bf.toString()
             if (pxy.statusCode === 200 || pxy.statusCode === 201) {
-                cli.publish(config.redis.key, ss)
+                const [, _index, _type,] = oriLoc.pathname.split('/')
+                cli.publish([config.redis.key, _index,].join('/'), ss)
+                cli.publish([config.redis.key, _index, pxy.statusCode].join('/'), ss)
+                cli.publish([config.redis.key, _index, _type].join('/'), ss)
+                cli.publish([config.redis.key, _index, _type, pxy.statusCode].join('/'), ss)
             }
         }
-        res.end(bf)
+        res.write(bf)
+        res.end()
     }).catch((err: Error) => {
         res.writeHead(502, {
             'Content-Length': err.message.length,
