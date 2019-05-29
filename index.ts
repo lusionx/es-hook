@@ -14,7 +14,7 @@ async function listener(req: IncomingMessage, res: ServerResponse) {
         hostname: oriLoc.hostname,
         port: oriLoc.port, method, headers,
         path: oriLoc.pathname + oriLoc.search
-    }, await read(req)).then(pxy => {
+    }, req).then(pxy => {
         res.writeHead(pxy.statusCode || 500, pxy.headers)
         const bf = pxy.read()
         if (oriLoc.pathname.endsWith('/_update')) {
